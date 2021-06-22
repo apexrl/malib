@@ -28,7 +28,7 @@ In general, a PB-MARL algorithm will start from an initialized policy set and th
 The key features of MALib include:
 
 * **Pytorch-based algorithm implementation**: All algorithms implemented in MALib are based on `PyTorch <https://pytorch.org/>`_.
-* **Popular distributed computing RL framework support**: MALib support multiple distributed computing RL frameworks, including asynchronous  
+* **Popular distributed computing RL framework support**: MALib's ``Actor-Evaluator-Learner`` model supports multiple distributed computing RL frameworks, such as IMPALA, A3C and others.
 * **Provide comprehensive multi-agent RL training interfaces**: MALib implemented abstractions of several popular MARL training paradigms, aims to accelerate the development of algorithms on, and make users focus on the development of core algorithms, not training flow customization. 
 
 
