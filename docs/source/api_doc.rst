@@ -7,13 +7,12 @@ API Documentation
 Training APIs
 -------------
 
-comming soon ...
+See the training API under :doc:`api/malib.agent`.
 
 
 Algorithm Customization
 -----------------------
-
-comming soon ...
+See the examples under `malib/algorithm <https://github.com/sjtu-marl/malib/tree/main/malib/algorithm>`_.
 
 
 .. _api-environment-custom:
@@ -21,15 +20,6 @@ comming soon ...
 Environment Customization
 -------------------------
 
-MALib works with environments implemented based on `PettingZoo <http://pettingzoo.ml/>`_ interfaces.
+MALib works with environments implemented based on `PettingZoo <http://pettingzoo.ml/>`_ interfaces, you can implement customized environments by following its API guides.
 
-
-Rollout Manners
-^^^^^^^^^^^^^^^
-
-There are two rollout manners in MALib, i.e., sequential and simultaneous.
-
-Vectorized
-^^^^^^^^^^
-
-MALib will auto-vectorized for environments which support simultaneous rollout to do batch rollout and evaluation. You can modify the batch level by specifing the ``num_episodes`` in the :ref:`global-settings`.
+More details about APIs, please refer to :doc:`api/malib`.

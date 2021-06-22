@@ -121,7 +121,7 @@ PSRO Learning
     }
 
 
-**Specify the training interface**: `Independent training interface <>`_ is designed to support independent learning such as DQN and PPO. As for the agent management, one interface for one agent. Since PSRO is nested with single-agent reinforcement learning algorithm, we choose independent training interface here to support the policy training.
+**Specify the training interface**: ``Independent training interface`` is designed to support independent learning such as DQN and PPO. As for the agent management, one interface for one agent. Since PSRO is nested with single-agent reinforcement learning algorithm, we choose independent training interface here to support the policy training.
 
 .. code-block:: python
 
