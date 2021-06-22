@@ -21,3 +21,6 @@ gym==0.18.0
 dataclasses==0.6
 wrapt==1.12.1
 PyYAML==5.4.1
+sphinx
+sphinx-rtd-theme
+sphinxcontrib-apidoc
