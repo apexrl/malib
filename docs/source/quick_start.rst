@@ -2,12 +2,12 @@
 
 Quick Start
 ===========
-If you have not installed MALib yet, please refer to :ref:`installation` before running. The following content will give a brief introduction to the key components in MALib, company with two cases of running `Policy Space Response Oracle (PSRO) <https://arxiv.org/pdf/1711.00832.pdf>`_ for `Leduc Holdem <https://en.wikipedia.org/wiki/Texas_hold_%27em>`_, and `MADDPG <https://arxiv.org/abs/1706.02275>`_ for a particle multi-agent cooperative task, `Simple Spread <https://www.pettingzoo.ml/mpe/simple_spread>`_.
+If you have not installed MALib yet, please refer to :ref:`installation` before running. The following content will give a brief introduction to the key components in MALib, company with the case of running `Policy Space Response Oracle (PSRO) <https://arxiv.org/pdf/1711.00832.pdf>`_ for `Leduc Holdem <https://en.wikipedia.org/wiki/Texas_hold_%27em>`_.
 
 
 Training Agent Interfaces
 -------------------------
-`Training agent interface <>`_ is a core component in MALib, which integrates policy pool management and training task execution. Typically, a training interface is responsible for the policy learning of multiple agents. Users can specify the relationship using `training agent mapping <>`_ to determine agent management in training interfaces.
+Training agent interface is a core component in MALib, which integrates policy pool management and training task execution. Typically, a training interface is responsible for the policy learning of multiple agents. Users can specify the relationship using ``training agent mapping`` to determine agent management in training interfaces.
 
 .. figure:: ../imgs/training_agent_interface.svg
     :align: center
@@ -41,17 +41,16 @@ or you can provide training interface configuration to the standard runner inter
         # ...
     )
 
-To get more details, you can move to `Training Agent Interfaces <>`_.
 
 Rollout Interfaces
 ------------------
-In MALib, rollout tasks are decoupled from learning tasks to achieve high tolerance of parallel performant. A typical `Rollout interface <>`_ is nested with workers work in parallel. The coming rollout tasks will be decomposed into sub-tasks and dispatched to the workers. To keep consistency with latest policy version, the rollout interface will coordinate with remote `parameter server <>`_ to pull parameters.
+In MALib, rollout tasks are decoupled from learning tasks to achieve high tolerance of parallel performant. A typical ``Rollout interface`` is nested with workers work in parallel. The coming rollout tasks will be decomposed into sub-tasks and dispatched to the workers. To keep consistency with latest policy version, the rollout interface will coordinate with remote ``parameter server`` to pull parameters.
 
 .. figure:: ../imgs/rollout_interface.svg
     :align: center
 
 
-As the rollout tasks are dispatched to workers, they will be executed in `vector enviroments <>`_ or `sequential environments <>`_. The instantiation is similar to the training interface. For example, you can create an instance explicitly using getter method ``get_rollout_interface``
+As the rollout tasks are dispatched to workers, they will be executed in ``vector enviroments`` or ``sequential environments``. The instantiation is similar to the training interface. For example, you can create an instance explicitly using getter method ``get_rollout_interface``
 
 .. code-block:: python
 
@@ -78,7 +77,7 @@ or provide a ``rollout configuration`` to the standard runner interface as below
 
 Algorithm: Policy, Trainer and Loss Function
 --------------------------------------------
-MALib decouples one algorithm into three components, i.e. `Policy <>`_, `Trainer <>`_ and `Loss Function <>`_ (optional). In a nutshell, Policy defines how an agent act in an environment, Trainer defines the optimization workflow, and Loss Function defines the loss function. Such a decomposition have some advantages\:
+MALib decouples one algorithm into three components, i.e. ``Policy``, ``Trainer`` and ``Loss Function <>`` (optional). In a nutshell, Policy defines how an agent act in an environment, Trainer defines the optimization workflow, and Loss Function defines the loss function. Such a decomposition have some advantages\:
 
 * `high code reuse for different policies`
 * `lower maintenance for algorithm development`
@@ -90,7 +89,7 @@ For example, we can replace a single-agent trainer with a centralized trainer to
 
 Global Evaluator
 ----------------
-`Global evaluator <>`_ bridges the evaluation results from rollout and training interfaces at each learning iteration and determine whether it is necessary to generate new learning iteration. Note that the learning iteration is defined in terms of policy expansion; each iteration of learning means one policy expansion.  More details could be found in `Actor-Evaluator-Learner model <>`_.
+``Global evaluator`` bridges the evaluation results from rollout and training interfaces at each learning iteration and determine whether it is necessary to generate new learning iteration. Note that the learning iteration is defined in terms of policy expansion; each iteration of learning means one policy expansion.  More details could be found in ``Actor-Evaluator-Learner model``.
 
 
 Examples
@@ -134,7 +133,7 @@ PSRO Learning
         },
     },
 
-**Specify the rollout interface**: Since independent training interface works in asynchronous mode, a rollout interface works asychronously is ideally in this case. Here, we choose `Async rollout interface <>`_ to meet this requirement.
+**Specify the rollout interface**: Since independent training interface works in asynchronous mode, a rollout interface works asychronously is ideally in this case. Here, we choose ``Async rollout interface`` to meet this requirement.
 
 .. code-block:: python
 
@@ -209,9 +208,3 @@ The completed distributed execution example is presented below.
             "callback": rollout_func.sequential
         }
     )
-
-
-Multi-agent Reinforcement Learning
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-coming soon ...

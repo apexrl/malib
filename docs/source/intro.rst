@@ -41,10 +41,11 @@ If you use MALib in your work, please cite the accompanying `paper <https://ying
 
 .. code-block:: bibtex
 
-    @inproceedings{zhou2021malib,
-        title={MALib: A Parallel Framework for Population-based Multi-agent Reinforcement Learning},
-        author={Zhou, Ming and Wan, Ziyu and Wang, Hanjing and Wen, Muning and Wu, Runzhe and Wen, Ying and Yang, Yaodong and Zhang, Weinan and Wang, Jun},
-        booktitle={Preprint},
+    @misc{zhou2021malib,
+        title={MALib: A Parallel Framework for Population-based Multi-agent Reinforcement Learning}, 
+        author={Ming Zhou and Ziyu Wan and Hanjing Wang and Muning Wen and Runzhe Wu and Ying Wen and Yaodong Yang and Weinan Zhang and Jun Wang},
         year={2021},
-        organization={Preprint}
+        eprint={2106.07551},
+        archivePrefix={arXiv},
+        primaryClass={cs.MA}
     }

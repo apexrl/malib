@@ -1,5 +1,5 @@
 .. _api-doc:
-.. automodule:: malib.algorithm
+
 
 API Documentation
 =================
@@ -7,13 +7,13 @@ API Documentation
 Training APIs
 -------------
 
-We implemented five basic traning interfaces as below, users can find more details from :ref:`malib.agent`.
+comming soon ...
 
 
 Algorithm Customization
 -----------------------
 
-MALib decouple the algorithm :ref:`malib.algorithm`
+comming soon ...
 
 
 .. _api-environment-custom:
