@@ -3,7 +3,7 @@
    You can adapt this file completely to your liking, but it should at least
    contain the root `toctree` directive.
 
-MALib: Parallel Framework for PB-MARL
+MALib: A Parallel Framework for PB-MARL
 =====================================
 
 .. toctree::
