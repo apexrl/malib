@@ -175,6 +175,8 @@ def simultaneous(
 
     metric.reset(mode="vector")
 
+    already_done = False
+
     while not done and cnt < fragment_length:
         act_dict = {}
         act_dist_dict = {}
@@ -217,7 +219,9 @@ def simultaneous(
                 items[k] = np.stack(v[aid])
 
             episode.insert(**items)
-            metric.step(aid, behavior_policies[aid], **items)
+
+            if not already_done:
+                metric.step(aid, behavior_policies[aid], **items)
 
         rets[Episode.CUR_OBS] = rets[Episode.NEXT_OBS]
         done = any(
@@ -226,6 +230,24 @@ def simultaneous(
                 for v in rets[Episode.DONE].values()
             ]
         )
+
+        # HACK(zbzhu): continuous sampling until reaching fragment length
+        if done:
+            rets = env.reset()
+            rets[Episode.CUR_OBS] = dict(
+                zip(
+                    agent_ids,
+                    [
+                        agent_interfaces[aid].transform_observation(
+                            rets[Episode.CUR_OBS][aid], policy_id=behavior_policies[aid]
+                        )
+                        for aid in agent_ids
+                    ],
+                )
+            )
+            done = False
+            already_done = True
+
         cnt += 1
         # if dataset_server is not None and cnt % send_interval == 0:
         #     dataset_server.save.remote(agent_episodes)

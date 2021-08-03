@@ -18,13 +18,12 @@ from readerwriterlock import rwlock
 
 from malib import settings
 from malib.backend.datapool.data_array import NumpyDataArray
-from malib.utils.errors import OversampleError, NoEnoughDataError
+from malib.utils.errors import NoEnoughDataError, BusyError
 from malib.utils.typing import BufferDescription, PolicyID, AgentID, Status
 from malib.utils.logger import get_logger, Log
 from malib.utils.logger import get_logger
 from malib.utils.typing import BufferDescription, PolicyID, AgentID
 
-import threading
 import pickle as pkl
 
 
@@ -245,7 +244,7 @@ class Episode:
         size = size or len(idxes)
 
         if self.size < size:
-            raise OversampleError(f"batch size={size} data size={self.size}")
+            raise NoEnoughDataError(f"batch size={size} data size={self.size}")
 
         if idxes is not None:
             return {k: self._data[k][idxes] for k in self.columns}
@@ -674,7 +673,7 @@ class ExternalReadOnlyDataset(ExternalDataset):
         except KeyError as e:
             info = f"data table `{table_name}` has not been created {list(self._tables.keys())}"
             res = None
-        except OversampleError as e:
+        except NoEnoughDataError as e:
             info = f"No enough data: table_size={table.size} batch_size={buffer_desc.batch_size} table_name={table_name}"
             res = None
         except Exception as e:
@@ -943,17 +942,24 @@ class OfflineDataset:
                 pid=buffer_desc.policy_id,
             )
             table = self._tables[table_name]
+            if table.size < self._learning_start:
+                raise NoEnoughDataError
             res = table.sample(size=buffer_desc.batch_size)
         except KeyError as e:
-            info = f"data table `{table_name}` has not been created {list(self._tables.keys())}"
+            # info = f"data table `{table_name}` has not been created {list(self._tables.keys())}"
+            info = KeyError
             res = None
-        except OversampleError as e:
-            info = f"No enough data: table_size={table.size} batch_size={buffer_desc.batch_size} table_name={table_name}"
+        except NoEnoughDataError as e:
+            # info = f"No enough data: table_size={table.size} batch_size={buffer_desc.batch_size} table_name={table_name}"
+            info = NoEnoughDataError
+            res = None
+        except BusyError as e:
+            info = BusyError
             res = None
         except Exception as e:
             print(traceback.format_exc())
             res = None
-            info = "others"
+            info = str(e)
 
         if len(self.external_proxy) > 0:
             external_res = []

@@ -88,6 +88,7 @@ class Status(enum.Enum):
     IN_PROGRESS = "in progress"
     EXCEED = "exceed"
     FAILED = "failed"
+    DONE = "done"
 
 
 class Paradigm(enum.Enum):

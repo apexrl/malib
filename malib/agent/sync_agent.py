@@ -59,6 +59,8 @@ class SyncAgent(IndependentAgent):
             random selection.
         """
 
+        self._lock_dataset = False
+
         IndependentAgent.__init__(
             self,
             assign_id,
@@ -90,7 +92,7 @@ class SyncAgent(IndependentAgent):
         return {
             aid: BufferDescription(
                 env_id=self._env_desc["config"]["env_id"],
-                agent_id=self._group,
+                agent_id=aid,
                 policy_id=pid,
                 batch_size=batch_size,
                 sample_mode=sample_mode,
@@ -115,13 +117,15 @@ class SyncAgent(IndependentAgent):
         if isinstance(buffer_desc, Dict):
             batch = {}
             for aid, _buffer_desc in buffer_desc.items():
-                while status == Status.FAILED:
-                    status = ray.get(
-                        self._offline_dataset.lock.remote(
-                            lock_type="pull", desc={aid: _buffer_desc}
+                if not self._lock_dataset:
+                    while status == Status.FAILED:
+                        status = ray.get(
+                            self._offline_dataset.lock.remote(
+                                lock_type="pull", desc={aid: _buffer_desc}
+                            )
                         )
-                    )
-                assert status == Status.SUCCESS, status
+                    assert status == Status.SUCCESS, status
+                    print("training lock:", status)
                 _batch, info = ray.get(
                     self._offline_dataset.sample.remote(_buffer_desc)
                 )
@@ -130,21 +134,22 @@ class SyncAgent(IndependentAgent):
                 else:
                     _batch = _batch.data
                 batch[aid] = _batch
-            print("training lock:", status)
         else:
-            while status == Status.FAILED:
-                status = ray.get(
-                    # FIXME(ming): support only one agent currently, no parameter sharing
-                    self._offline_dataset.lock.remote(
-                        lock_type="pull", desc={buffer_desc.agent_id: buffer_desc}
+            if not self._lock_dataset:
+                while status == Status.FAILED:
+                    status = ray.get(
+                        # FIXME(ming): support only one agent currently, no parameter sharing
+                        self._offline_dataset.lock.remote(
+                            lock_type="pull", desc={buffer_desc.agent_id: buffer_desc}
+                        )
                     )
-                )
-            assert status == Status.SUCCESS, status
+                assert status == Status.SUCCESS, status
             batch, info = ray.get(self._offline_dataset.sample.remote(buffer_desc))
             if batch is None:
                 batch = dict()
             else:
                 batch = batch.data
+        self._lock_dataset = True
         return batch, info
 
     def push(self, env_aid: AgentID, pid: PolicyID) -> Status:
@@ -170,5 +175,7 @@ class SyncAgent(IndependentAgent):
             )
         )
         print("training unlock:", _status)
+
+        self._lock_dataset = False
 
         return status

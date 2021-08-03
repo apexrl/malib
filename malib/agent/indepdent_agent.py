@@ -10,6 +10,7 @@ from malib.utils.typing import (
     AgentID,
     PolicyID,
     MetricEntry,
+    BufferDescription,
 )
 
 from malib.agent.agent_interface import AgentInterface
@@ -90,6 +91,32 @@ class IndependentAgent(AgentInterface):
                 trainer.optimize(batch[env_aid]), prefix=pid
             )
         return res
+
+    def gen_buffer_description(
+        self,
+        agent_policy_mapping: Dict[AgentID, PolicyID],
+        batch_size: int,
+        sample_mode: str,
+    ):
+        """Generate buffer description.
+
+        :param AgentID aid: Environment agent id.
+        :param PolicyID pid: Policy id.
+        :param int batch_size: Sample batch size.
+        :param str sample_mode: sample mode
+        :return: A buffer description entity.
+        """
+
+        return {
+            aid: BufferDescription(
+                env_id=self._env_desc["config"]["env_id"],
+                agent_id=aid,
+                policy_id=pid,
+                batch_size=batch_size,
+                sample_mode=sample_mode,
+            )
+            for aid, (pid, _) in agent_policy_mapping.items()
+        }
 
     def add_policy_for_agent(
         self, env_agent_id: AgentID, trainable: bool

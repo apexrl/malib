@@ -414,7 +414,21 @@ class AgentInterface(metaclass=ABCMeta):
                 global_step=epoch,
             ):
                 start = time.time()
-                batch, size = self.request_data(buffer_desc)
+                batch, info = self.request_data(buffer_desc)
+                if info == errors.NoEnoughDataError:
+                    for env_aid in self._group:
+                        status = self.push(env_aid, pid)
+                        if status.locked:
+                            # terminate sub task tagged with env_id
+                            stopper.set_terminate(env_aid)
+                            # and remove buffer request description
+                            if isinstance(buffer_desc, Dict):
+                                buffer_desc.pop(env_aid)
+                            # also training poilcy id mapping
+                            policy_id_mapping.pop(env_aid)
+                        else:
+                            self.pull(env_aid, pid)
+                    continue
 
             with Log.stat_feedback(
                 log=settings.STATISTIC_FEEDBACK,
