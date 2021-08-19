@@ -174,8 +174,7 @@ def simultaneous(
     )
 
     metric.reset(mode="vector")
-
-    already_done = False
+    metric_list = []
 
     while not done and cnt < fragment_length:
         act_dict = {}
@@ -220,8 +219,7 @@ def simultaneous(
 
             episode.insert(**items)
 
-            if not already_done:
-                metric.step(aid, behavior_policies[aid], **items)
+            metric.step(aid, behavior_policies[aid], **items)
 
         rets[Episode.CUR_OBS] = rets[Episode.NEXT_OBS]
         done = any(
@@ -245,8 +243,9 @@ def simultaneous(
                     ],
                 )
             )
+            metric_list.append(metric.parse(agent_filter=tuple(agent_episodes.keys())))
+            metric.reset(mode="vector")
             done = False
-            already_done = True
 
         cnt += 1
         # if dataset_server is not None and cnt % send_interval == 0:
@@ -256,10 +255,10 @@ def simultaneous(
         #         e.reset()
 
     if dataset_server:
-        dataset_server.save.remote(agent_episodes, wait_for_ready=False)
+        ray.get(dataset_server.save.remote(agent_episodes, wait_for_ready=True))
     transition_size = cnt * len(agent_episodes) * getattr(env, "num_envs", 1)
 
-    evaluated_results = metric.parse(agent_filter=tuple(agent_episodes.keys()))
+    evaluated_results = metric.merge_parsed(agent_result_seq=metric_list)
     return evaluated_results, transition_size
 
 
