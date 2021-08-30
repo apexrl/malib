@@ -1,20 +1,13 @@
 """
 Implementation of async rollout worker.
 """
-from collections import defaultdict
-from malib.algorithm.common.policy import Policy
 
-import ray
 from ray.util import ActorPool
 
-import uuid
-from malib import settings
-from malib import rollout
-from malib.backend.datapool.offline_dataset_server import Episode, MultiAgentEpisode
+from malib.backend.datapool.offline_dataset_server import Episode
 from malib.envs.agent_interface import AgentInterface
 from malib.rollout import rollout_func
 from malib.rollout.base_worker import BaseRolloutWorker
-from malib.utils.logger import Log, get_logger
 from malib.utils.typing import (
     AgentID,
     Any,
@@ -128,7 +121,7 @@ class RolloutWorker(BaseRolloutWorker):
             for interface in self._agent_interfaces.values():
                 interface.set_behavior_mode(BehaviorMode.EXPLOITATION)
 
-        if role == "simulation":
+        if role == "simulation" or "evaluation":
             tasks = [
                 {"num_episodes": num_episodes, "behavior_policies": comb}
                 for comb in policy_combinations

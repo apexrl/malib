@@ -25,32 +25,32 @@ class SACLoss(LossFunc):
         self.policy.soft_update(self._params["tau"])
 
     def setup_optimizers(self, *args, **kwargs):
-        if self.optimizers is None:
-            optim_cls = getattr(torch.optim, self._params.get("optimizer", "Adam"))
-            self.optimizers = {
-                "actor": optim_cls(
-                    self.policy.actor.parameters(), lr=self._params["actor_lr"]
-                ),
-                "critic_1": optim_cls(
-                    self.policy.critic_1.parameters(), lr=self._params["critic_lr"]
-                ),
-                "critic_2": optim_cls(
-                    self.policy.critic_2.parameters(), lr=self._params["critic_lr"]
-                ),
-            }
-        else:
-            self.optimizers["actor"].param_groups = []
-            self.optimizers["actor"].add_param_group(
-                {"params": self.policy.actor.parameters()}
-            )
-            self.optimizers["critic_1"].param_groups = []
-            self.optimizers["critic_1"].add_param_group(
-                {"params": self.policy.critic_1.parameters()}
-            )
-            self.optimizers["critic_2"].param_groups = []
-            self.optimizers["critic_2"].add_param_group(
-                {"params": self.policy.critic_2.parameters()}
-            )
+        # if self.optimizers is None:
+        optim_cls = getattr(torch.optim, self._params.get("optimizer", "Adam"))
+        self.optimizers = {
+            "actor": optim_cls(
+                self.policy.actor.parameters(), lr=self._params["actor_lr"]
+            ),
+            "critic_1": optim_cls(
+                self.policy.critic_1.parameters(), lr=self._params["critic_lr"]
+            ),
+            "critic_2": optim_cls(
+                self.policy.critic_2.parameters(), lr=self._params["critic_lr"]
+            ),
+        }
+        # else:
+        #     self.optimizers["actor"].param_groups = []
+        #     self.optimizers["actor"].add_param_group(
+        #         {"params": self.policy.actor.parameters()}
+        #     )
+        #     self.optimizers["critic_1"].param_groups = []
+        #     self.optimizers["critic_1"].add_param_group(
+        #         {"params": self.policy.critic_1.parameters()}
+        #     )
+        #     self.optimizers["critic_2"].param_groups = []
+        #     self.optimizers["critic_2"].add_param_group(
+        #         {"params": self.policy.critic_2.parameters()}
+        #     )
 
     def __call__(self, batch) -> Dict[str, Any]:
         self.loss = []
@@ -74,8 +74,9 @@ class SACLoss(LossFunc):
 
         # critic update
         vf_in = torch.cat([cur_obs, actions], dim=-1)
-        pred_q_1 = self.policy.critic_1(vf_in)
-        pred_q_2 = self.policy.critic_2(vf_in)
+        pred_q_1 = self.policy.critic_1(vf_in).view(-1)
+        pred_q_2 = self.policy.critic_2(vf_in).view(-1)
+
         with torch.no_grad():
             next_action_logits = self.policy.actor(next_obs)
             next_action_dist = Independent(Normal(*next_action_logits), 1)
@@ -90,16 +91,14 @@ class SACLoss(LossFunc):
                 [next_obs, next_actions],
                 dim=-1,
             )
-            next_q = (
-                torch.min(
-                    self.policy.target_critic_1(target_vf_in),
-                    self.policy.target_critic_2(target_vf_in),
-                )
-                - alpha * next_action_log_prob
+            min_target_q = torch.min(
+                self.policy.target_critic_1(target_vf_in),
+                self.policy.target_critic_2(target_vf_in),
             )
+            next_q = min_target_q - alpha * next_action_log_prob
             target_q = rewards + gamma * next_q * (1.0 - dones)
-        critic_loss_1 = (pred_q_1 - target_q).pow(2).mean()
-        critic_loss_2 = (pred_q_2 - target_q).pow(2).mean()
+        critic_loss_1 = (pred_q_1 - target_q.view(-1)).pow(2).mean()
+        critic_loss_2 = (pred_q_2 - target_q.view(-1)).pow(2).mean()
 
         self.optimizers["critic_1"].zero_grad()
         critic_loss_1.backward()
@@ -119,16 +118,20 @@ class SACLoss(LossFunc):
         if action_squash:
             policy_actions = torch.tanh(policy_actions)
             policy_action_log_prob = policy_action_log_prob - torch.log(
-                1 - policy_actions.pow(2) + self.policy._eps
+                1.0 - policy_actions.pow(2) + self.policy._eps
             ).sum(-1, keepdim=True)
         vf_in = torch.cat([cur_obs, policy_actions], dim=-1)
-        current_q_1 = self.policy.critic_1(vf_in).flatten()
-        current_q_2 = self.policy.critic_2(vf_in).flatten()
+        current_q_1 = self.policy.critic_1(vf_in)
+        current_q_2 = self.policy.critic_2(vf_in)
         actor_loss = (
-            alpha * policy_action_log_prob.flatten()
-            - torch.min(current_q_1, current_q_2)
-        ).mean()
+            (alpha * policy_action_log_prob - torch.min(current_q_1, current_q_2))
+            .view(-1)
+            .mean()
+        )
+
         self.optimizers["actor"].zero_grad()
+        self.optimizers["critic_1"].zero_grad()
+        self.optimizers["critic_2"].zero_grad()
         actor_loss.backward()
         self.optimizers["actor"].step()
 

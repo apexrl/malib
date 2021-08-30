@@ -51,5 +51,6 @@ class NoEnoughDataError(Error):
 class RegisterFailure(Error):
     pass
 
+
 class BusyError(Error):
     pass

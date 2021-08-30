@@ -1,5 +1,6 @@
 from abc import ABCMeta, abstractmethod
 from collections import defaultdict
+from malib.backend.datapool.offline_dataset_server import Episode
 from typing import Sequence, List, Dict, Any
 
 from operator import mul
@@ -129,6 +130,7 @@ class SimpleMetrics(Metric):
         self._mode = mode
         self._episode_data = {
             MetricType.REWARD: defaultdict(lambda: []),
+            Episode.DONE: defaultdict(lambda: []),
         }
         self._statistics = defaultdict(
             lambda: defaultdict(

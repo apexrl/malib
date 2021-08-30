@@ -15,24 +15,34 @@ In your custom rollout function, you can decide extra data
 you wanna save by specifying extra columns when Episode initialization.
 """
 
-from typing import Callable
 import uuid
 
 import ray
 import numpy as np
+import collections
 
-from collections import defaultdict
 
 from malib import settings
 from malib.utils.logger import get_logger, Log
 from malib.utils.metrics import get_metric, Metric
-from malib.utils.typing import AgentID, Dict, MetricEntry, PolicyID, Union, Any, Tuple
+from malib.utils.typing import (
+    AgentID,
+    Dict,
+    MetricEntry,
+    MetricType,
+    PolicyID,
+    Union,
+    Any,
+    Tuple,
+    Callable,
+)
 from malib.utils.preprocessor import get_preprocessor
 from malib.envs import Environment
 from malib.envs.agent_interface import AgentInterface
 from malib.envs.vector_env import VectorEnv
 from malib.backend.datapool.offline_dataset_server import (
     Episode,
+    EpisodeLock,
     SequentialEpisode,
 )
 
@@ -129,9 +139,14 @@ def sequential(
     return evaluated_results, cnt
 
 
+_TimeStep = collections.namedtuple(
+    "_TimeStep", "observation, action_mask, reward, action, done, action_dist"
+)
+
+
 def simultaneous(
     env: type,
-    num_episodes: int,
+    num_episodes: int,  # it is actually the environment number
     agent_interfaces: Dict[AgentID, AgentInterface],
     fragment_length: int,
     behavior_policies: Dict[AgentID, PolicyID],
@@ -155,110 +170,74 @@ def simultaneous(
     :return: A tuple of statistics and the size of buffered experience.
     """
 
-    rets = env.reset(limits=num_episodes)
-    done = False
+    rets = env.reset(limits=num_episodes, fragment_length=fragment_length)
+
+    # metric.reset(mode="vector")
+    episode_length = []
+    episode_rewards = {aid: [] for aid in agent_episodes}
+
+    rets = env.reset()
     cnt = 0
 
-    agent_ids = list(agent_interfaces.keys())
+    observations = {
+        aid: agent_interfaces[aid].transform_observation(obs)
+        for aid, obs in rets[Episode.CUR_OBS].items()
+    }
 
-    rets[Episode.CUR_OBS] = dict(
-        zip(
-            agent_ids,
-            [
-                agent_interfaces[aid].transform_observation(
-                    rets[Episode.CUR_OBS][aid], policy_id=behavior_policies[aid]
-                )
-                for aid in agent_ids
-            ],
-        )
-    )
-
-    metric.reset(mode="vector")
-    metric_list = []
-
-    while not done and cnt < fragment_length:
-        act_dict = {}
-        act_dist_dict = {}
-
-        prets = []
-        for aid in agent_ids:
-            obs_seq = rets[Episode.CUR_OBS][aid]
-            extra_kwargs = {"policy_id": behavior_policies[aid]}
-            if rets.get(Episode.ACTION_MASK) is not None:
-                extra_kwargs["action_mask"] = rets[Episode.ACTION_MASK][aid]
-            prets.append(agent_interfaces[aid].compute_action(obs_seq, **extra_kwargs))
-        for aid, (x, y, _) in zip(agent_ids, prets):
-            act_dict[aid] = x
-            act_dist_dict[aid] = y
-
-        next_rets = env.step(act_dict)
-        rets.update(next_rets)
-
-        for k, v in rets.items():
-            if k == Episode.NEXT_OBS:
-                tmpv = []
-                for aid in agent_ids:
-                    tmpv.append(
-                        agent_interfaces[aid].transform_observation(
-                            v[aid], policy_id=behavior_policies[aid]
-                        )
-                    )
-                for aid, e in zip(agent_ids, tmpv):
-                    v[aid] = e
-
-        # stack to episodes
-        for aid in agent_episodes:
-            episode = agent_episodes[aid]
-            items = {
-                Episode.ACTION: np.stack(act_dict[aid]),
-                Episode.ACTION_DIST: np.stack(act_dist_dict[aid]),
-            }
-
-            for k, v in rets.items():
-                items[k] = np.stack(v[aid])
-
-            episode.insert(**items)
-
-            metric.step(aid, behavior_policies[aid], **items)
-
-        rets[Episode.CUR_OBS] = rets[Episode.NEXT_OBS]
-        done = any(
-            [
-                any(v) if not isinstance(v, bool) else v
-                for v in rets[Episode.DONE].values()
-            ]
-        )
-
-        # HACK(zbzhu): continuous sampling until reaching fragment length
-        if done:
-            rets = env.reset()
-            rets[Episode.CUR_OBS] = dict(
-                zip(
-                    agent_ids,
-                    [
-                        agent_interfaces[aid].transform_observation(
-                            rets[Episode.CUR_OBS][aid], policy_id=behavior_policies[aid]
-                        )
-                        for aid in agent_ids
-                    ],
-                )
+    while not env.terminated():
+        actions, action_dists, action_masks = {}, {}, {}
+        for aid, observation in observations.items():
+            action_masks[aid] = (
+                rets[Episode.ACTION_MASK][aid]
+                if rets.get(Episode.ACTION_MASK) is not None
+                else None
             )
-            metric_list.append(metric.parse(agent_filter=tuple(agent_episodes.keys())))
-            metric.reset(mode="vector")
-            done = False
+            actions[aid], action_dists[aid], _ = agent_interfaces[aid].compute_action(
+                observation,
+                policy_id=behavior_policies[aid],
+                action_mask=action_masks[aid],
+            )
+        rets = env.step(actions)
 
+        if "total_rewards" in rets:
+            for e in rets["total_rewards"]:
+                for aid, v in e.items():
+                    episode_rewards[aid].append(v)
+        if "cnt" in rets:
+            episode_length.extend(rets["cnt"])
+
+        next_observations = {
+            aid: agent_interfaces[aid].transform_observation(obs)
+            for aid, obs in rets[Episode.CUR_OBS].items()
+        }
+
+        if dataset_server:
+            for aid in env.trainable_agents:
+                agent_episodes[aid].insert(
+                    **{
+                        Episode.CUR_OBS: observations[aid],
+                        Episode.NEXT_OBS: next_observations[aid],
+                        Episode.REWARD: rets[Episode.REWARD][aid],
+                        Episode.ACTION: actions[aid],
+                        Episode.DONE: rets[Episode.DONE][aid],
+                        Episode.ACTION_DIST: action_dists[aid],
+                    }
+                )
+        observations = next_observations
         cnt += 1
-        # if dataset_server is not None and cnt % send_interval == 0:
-        #     dataset_server.save.remote(agent_episodes)
-        #     # clean agent episode
-        #     for e in agent_episodes.values():
-        #         e.reset()
 
     if dataset_server:
         ray.get(dataset_server.save.remote(agent_episodes, wait_for_ready=True))
-    transition_size = cnt * len(agent_episodes) * getattr(env, "num_envs", 1)
 
-    evaluated_results = metric.merge_parsed(agent_result_seq=metric_list)
+    transition_size = len(agent_episodes) * cnt
+    evaluated_results = {
+        MetricType.REWARD: {
+            aid: sum(v) / max(1, len(v)) for aid, v in episode_rewards.items()
+        },
+        MetricType.EPISODE_LENGTH: sum(episode_length) / len(episode_length)
+        if len(episode_length) > 0
+        else cnt // num_episodes,
+    }
     return evaluated_results, transition_size
 
 
@@ -366,7 +345,6 @@ class Stepping:
             for agent in desc["behavior_policies"]
         }
 
-        metric = get_metric(metric_type)(self.env.possible_agents)
         callback = get_func(callback) if callback else self.callback
 
         evaluated_results, num_frames = callback(
@@ -376,7 +354,7 @@ class Stepping:
             fragment_length,
             behavior_policies,
             agent_episodes,
-            metric,
+            None,
             dataset_server=self._dataset_server if role == "rollout" else None,
         )
 

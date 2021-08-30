@@ -285,9 +285,11 @@ class PayoffManager:
             agent: pid for agent, (pid, _) in content.policy_combination.items()
         }
         for agent in self.agents:
-            self._payoff_tables[agent][population_combination] = content.statistics[
-                agent
-            ][MetricType.REWARD]
+            self._payoff_tables[agent][population_combination] = (
+                content.statistics[agent][MetricType.REWARD]
+                if content.statistics.get(agent)
+                else 0.0
+            )
             self._payoff_tables[agent].set_simulation_done(population_combination)
             # self._done_table[agent][population_combination] = True
 
@@ -298,7 +300,12 @@ class PayoffManager:
 
         update_entries = {
             "Agents-Reward": [
-                (agent, content.statistics[agent][MetricType.REWARD])
+                (
+                    agent,
+                    content.statistics[agent][MetricType.REWARD]
+                    if content.statistics.get(agent)
+                    else 0.0,
+                )
                 for agent in self.agents
             ],
             "Population": population_combination,

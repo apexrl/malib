@@ -4,7 +4,7 @@ name: "share/sac_hopper"
 
 training:
   interface:
-    type: "sync"
+    type: "independent"
     population_size: -1
   config:
     # control the frequency of remote parameter update
@@ -22,7 +22,7 @@ training:
       max_step: 1000000
 
 rollout:
-  type: "sync"
+  type: "async"
   # stopper: "simple_rollout"
   # stopper_config:
   #   max_step: 10000

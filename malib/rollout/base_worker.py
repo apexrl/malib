@@ -9,7 +9,10 @@ import traceback
 
 import ray
 
+from torch.utils import tensorboard
+
 from malib import settings
+from malib.utils import logger
 from malib.utils.typing import (
     AgentID,
     TaskDescription,
@@ -38,6 +41,43 @@ PARAMETER_GET_TIMEOUT = 3
 MAX_PARAMETER_GET_RETRIES = 10
 
 
+def write_to_tensorboard(
+    writer: tensorboard.SummaryWriter, info: Dict, global_step: int, prefix: str = ""
+):
+    """Write learning info to tensorboard.
+    Args:
+        writer (tensorboard.SummaryWriter): The summary writer instance.
+        info (Dict): The information dict.
+        global_step (int): The global step indicator.
+        prefix (str): Prefix added to keys in the info dict.
+    """
+
+    prefix = f"{prefix}/" if len(prefix) > 0 else ""
+    for k, v in info.items():
+        if isinstance(v, dict):
+            # add k to prefix
+            write_to_tensorboard(writer, v, global_step, f"{prefix}{k}")
+        elif isinstance(v, Sequence):
+            raise NotImplementedError(
+                f"Sequence value cannot be logged currently: {v}."
+            )
+        else:
+            writer.add_scalar(f"{prefix}{k}", v, global_step=global_step)
+
+
+def _traverse(key, value, agg: str = "mean"):
+    res = {}
+    if isinstance(value, Dict):
+        for k, v in value.items():
+            tmp = _traverse(f"{key}/{k}", v)
+            res.update(tmp)
+    elif isinstance(value, Tuple) or isinstance(value, List):
+        res[key] = sum(value) / max(len(value), 1) if agg == "mean" else sum(value)
+    else:
+        res = {key: value}
+    return res
+
+
 class BaseRolloutWorker:
     def __init__(
         self,
@@ -61,7 +101,7 @@ class BaseRolloutWorker:
 
         self._worker_index = worker_index
         self._env_description = env_desc
-        self._test = test
+        self._test = False
         self._save = save
         self.global_step = 0
 
@@ -72,6 +112,10 @@ class BaseRolloutWorker:
         env = env_desc["creator"](**env_desc["config"])
         self._agents = env.possible_agents
         self._kwargs = kwargs
+
+        self._summary_writer = tensorboard.SummaryWriter(
+            log_dir=os.path.join(settings.LOG_DIR)
+        )
 
         if remote:
             self.init()
@@ -306,50 +350,62 @@ class BaseRolloutWorker:
         epoch = 0
         self.set_state(task_desc)
 
+        group = "testing" if self._test else "evaluation"
+
         while not stopper(merged_statics, global_step=epoch):
-            with Log.stat_feedback(
-                log=settings.STATISTIC_FEEDBACK,
-                logger=self.logger,
-                worker_idx=None,
-                global_step=epoch,
-                group="testing" if self._test else "rollout",
-            ) as (
-                statistic_seq,
-                processed_statics,
-            ):
-                # async update parameter
-                start = time.time()
-                status = self.update_state(task_desc, waiting=False)
+            # with Log.stat_feedback(
+            #     log=settings.STATISTIC_FEEDBACK,
+            #     logger=self.logger,
+            #     worker_idx=None,
+            #     global_step=epoch,
+            #     group="testing" if self._test else "rollout",
+            # ) as (
+            #     statistic_seq,
+            #     processed_statics,
+            # ):
+            # async update parameter
+            status = self.update_state(task_desc, waiting=False)
 
-                if status == Status.LOCKED:
-                    break
+            if status == Status.LOCKED:
+                break
 
-                trainable_behavior_policies = {
-                    aid: pid
-                    for aid, (
-                        pid,
-                        _,
-                    ) in task_desc.content.agent_involve_info.trainable_pairs.items()
-                }
-                # get behavior policies of other fixed agent
-                res, num_frames = self.sample(
-                    callback=task_desc.content.callback,
-                    num_episodes=task_desc.content.num_episodes,
-                    policy_combinations=[trainable_behavior_policies],
-                    explore=False if self._test else True,
-                    fragment_length=task_desc.content.fragment_length,
-                    role="rollout",
-                    policy_distribution=task_desc.content.policy_distribution,
-                )
-                end = time.time()
-                # print(
-                #     f"epoch {epoch}, "
-                #     f"{task_desc.content.agent_involve_info.training_handler} "
-                #     f"from worker={self._worker_index} time consump={end - start} seconds"
-                # )
-                statistic_seq.extend(res)
+            trainable_behavior_policies = {
+                aid: pid
+                for aid, (
+                    pid,
+                    _,
+                ) in task_desc.content.agent_involve_info.trainable_pairs.items()
+            }
 
-            merged_statics = processed_statics[0]
+            # get behavior policies of other fixed agent
+            res, num_frames = self.sample(
+                callback=task_desc.content.callback,
+                num_episodes=task_desc.content.num_episodes,
+                policy_combinations=[trainable_behavior_policies],
+                explore=True,
+                fragment_length=task_desc.content.fragment_length,
+                role="rollout",
+                policy_distribution=task_desc.content.policy_distribution,
+            )
+
+            res, num_frames = self.sample(
+                callback=task_desc.content.callback,
+                num_episodes=task_desc.content.num_episodes,
+                policy_combinations=[trainable_behavior_policies],
+                explore=False,
+                fragment_length=task_desc.content.fragment_length,
+                role="evaluation",
+                policy_distribution=task_desc.content.policy_distribution,
+            )
+            for e in res:
+                tmp = _traverse(group, e)
+                write_to_tensorboard(self._summary_writer, tmp, global_step=epoch)
+                # for k, v in tmp.items():
+                #     self.logger.send_scalar(
+                #         tag=k,
+                #         content=v
+                #     )
+            print("rollout end for tmp:", tmp)
             self.after_rollout(task_desc.content.agent_involve_info.trainable_pairs)
             epoch += 1
 
@@ -419,18 +475,25 @@ class BaseRolloutWorker:
             role="simulation",
         )
         for statistics, combination in zip(statis_list, combinations):
-            with Log.stat_feedback(
-                log=False, logger=self.logger, group="simulation"
-            ) as (
-                statistic_seq,
-                merged_statistics,
-            ):
-                statistic_seq.append(statistics)
-            merged_statistics = merged_statistics[0]
+            # with Log.stat_feedback(
+            #     log=False, logger=self.logger, group="simulation"
+            # ) as (
+            #     statistic_seq,
+            #     merged_statistics,
+            # ):
+            #     statistic_seq.append(statistics)
+            # merged_statistics = merged_statistics[0]
+            # for e in statistics:
+            #     tmp = _traverse("simulation", e)
+            # for k, v in tmp.items():
+            #     self.logger.send_scalar(
+            #         tag=k,
+            #         content=v
+            #     )
             rollout_feedback = RolloutFeedback(
                 worker_idx=self._worker_index,
                 agent_involve_info=agent_involve_info,
-                statistics=merged_statistics,
+                statistics={},
                 policy_combination=combination,
             )
             task_req = TaskRequest(

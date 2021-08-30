@@ -10,10 +10,19 @@ class Environment:
         self._trainable_agents = None
         self._configs = configs
         self._env = None
+        self._total_rewards = {}
+        self._cnt = 0
 
     @property
     def env(self):
         return self._env
+
+    @property
+    def cnt(self):
+        return self._cnt
+
+    def episode_rewards(self):
+        return self._total_rewards
 
     @staticmethod
     def from_sequential_game(env, **kwargs):
@@ -45,6 +54,8 @@ class Environment:
         return self._extra_returns
 
     def reset(self, *args, **kwargs):
+        self._total_rewards = dict.fromkeys(self._trainable_agents, 0.0)
+        self._cnt = 0
         return self._env.reset()
 
     def step(self, actions: Dict[AgentID, Any]):

@@ -116,6 +116,8 @@ class MetricType:
     REACH_MAX_STEP = "reach_max_step"
     """Whether reach max step or not"""
 
+    EPISODE_LENGTH = "episode_length"
+
 
 Parameter = Any
 

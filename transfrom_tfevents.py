@@ -42,7 +42,10 @@ def exportToexcel(scalarNameList, excelName):
 
 if __name__ == "__main__":
     event_path = "logs/Gym/share/sac_hopper_1627785355.208333/events.out.tfevents.1627791993.gpu30"
-    scalarNameList = ["rollout/agent_0/SAC_1/reward", "training/agent_0/SAC_1/policy_loss"]
+    scalarNameList = [
+        "rollout/agent_0/SAC_1/reward",
+        "training/agent_0/SAC_1/policy_loss",
+    ]
 
     excelName = "data.xlsx"
     exportToexcel(scalarNameList, excelName)

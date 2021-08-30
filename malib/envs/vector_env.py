@@ -5,6 +5,7 @@ with shared multi-agent policies. Currently, the `VectorEnv` support parallel ro
 
 from collections import defaultdict
 import logging
+from malib.backend.datapool.offline_dataset_server import Episode
 import gym
 import numpy as np
 
@@ -55,6 +56,8 @@ class VectorEnv:
         self._creator = creator
         self._configs = configs.copy()
         self._envs: List[Environment] = []
+        self._step_cnt = 0
+        self._fragment_length = 0
 
         if num_envs > 0:
             self._envs.append(creator(**configs))
@@ -133,8 +136,10 @@ class VectorEnv:
                 self._num_envs += 1
             logger.debug(f"created {num} new environments.")
 
-    def reset(self, limits: int = None) -> Dict:
+    def reset(self, limits: int = None, fragment_length: int = 1000) -> Dict:
         self._limits = limits or self.num_envs
+        self._fragment_length = fragment_length
+        self._step_cnt = 0
         transitions = defaultdict(lambda: AgentItems())
         for i, env in enumerate(self.envs[: self._limits]):
             ret = env.reset()
@@ -145,6 +150,7 @@ class VectorEnv:
 
     def step(self, actions: Dict[AgentID, List]) -> Dict:
         transitions = defaultdict(lambda: AgentItems())
+        self._step_cnt += 1
         for i, env in enumerate(self.envs):
             ret = env.step(
                 {
@@ -152,13 +158,32 @@ class VectorEnv:
                     for _agent, array in actions.items()
                 }
             )
+            # TODO(ming): if env is done, reset environment here
+            done = any(ret[Episode.DONE].values())
+            if done or self.terminated():
+                if "total_rewards" not in ret:
+                    ret["total_rewards"] = []
+                if "cnt" not in ret:
+                    ret["cnt"] = []
+                ret["total_rewards"].append(env.episode_rewards())
+                ret["cnt"].append(env.cnt)
+                ret.update(env.reset())
             for k, agent_items in ret.items():
-                transitions[k].update(agent_items)
+                if k in ["total_rewards", "cnt"]:
+                    transitions[k] = agent_items
+                else:
+                    transitions[k].update(agent_items)
 
         # merge transitions by keys
-        data = {k: v.cleaned_data() for k, v in transitions.items()}
+        data = {
+            k: v.cleaned_data() if isinstance(v, AgentItems) else v
+            for k, v in transitions.items()
+        }
         return data
 
     def close(self):
         for env in self._envs:
             env.close()
+
+    def terminated(self):
+        return self._step_cnt >= self._fragment_length
